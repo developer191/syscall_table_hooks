@@ -23,13 +23,23 @@ unsigned long long *syscall_table = NULL;
 
 
 
-static int find_sys_call_table (char *kern_ver)
- {
- 
-    char buf[MAX_VERSION_LEN];
+static int find_sys_call_table (char *kern_ver) {
+    char system_map_entry[MAX_VERSION_LEN];
     int i = 0;
+
+    /*
+     * Holds the /boot/System.map-<version> file name as we build it
+     */
     char *filename;
-    char *p;
+
+    /*
+     * Length of the System.map filename, terminating NULL included
+     */
+    size_t filename_length = strlen(kern_ver) + strlen(BOOT_PATH) + 1;
+
+    /*
+     * This will point to our /boot/System.map-<version> file
+     */
     struct file *f = NULL;
  
     mm_segment_t oldfs;
@@ -37,58 +47,63 @@ static int find_sys_call_table (char *kern_ver)
     oldfs = get_fs();
     set_fs (KERNEL_DS);
      
-    filename = kmalloc(strlen(kern_ver)+strlen(BOOT_PATH)+1, GFP_KERNEL);
-     
-    if ( filename == NULL ) {
-     
+    filename = kmalloc(filename_length, GFP_KERNEL);
+    if (filename == NULL) {
+        printk(KERN_EMERG "kmalloc failed on System.map-<version> filename allocation");
         return -1;
-     
     }
      
-    memset(filename, 0, strlen(BOOT_PATH)+strlen(kern_ver)+1);
+    /*
+     * Zero out memory to be safe
+     */
+    memset(filename, 0, filename_length);
      
+    /*
+     * Construct our /boot/System.map-<version> file name
+     */
     strncpy(filename, BOOT_PATH, strlen(BOOT_PATH));
     strncat(filename, kern_ver, strlen(kern_ver));
      
-    printk(KERN_ALERT "\nPath %s\n", filename);
-     
+    /*
+     * Open the System.map file for reading
+     */
     f = filp_open(filename, O_RDONLY, 0);
-     
-    if ( IS_ERR(f) || ( f == NULL )) {
-     
+    if (IS_ERR(f) || (f == NULL)) {
         return -1;
-     
     }
  
-    memset(buf, 0x0, MAX_VERSION_LEN);
+    memset(system_map_entry, 0, MAX_VERSION_LEN);
  
-    p = buf;
- 
-    while (vfs_read(f, p+i, 1, &f->f_pos) == 1) {
- 
-        if ( p[i] == '\n' || i == 255 ) {
-         
+    /*
+     * Read one byte at a time from the file until we either max out
+     * out our buffer or read an entire line.
+     */
+    while (vfs_read(f, system_map_entry + i, 1, &f->f_pos) == 1) {
+        /*
+         * If we've read an entire line or maxed out our buffer,
+         * check to see if we've just read the sys_call_table entry.
+         */
+        if ( system_map_entry[i] == '\n' || i == MAX_VERSION_LEN ) {
+            // Reset the "column"/"character" counter for the row
             i = 0;
              
-            if ( (strstr(p, "sys_call_table")) != NULL ) {
-                 
+            if (strstr(system_map_entry, "sys_call_table") != NULL) {
                 char *sys_string;
+                char *system_map_entry_ptr = system_map_entry;
                  
                 sys_string = kmalloc(MAX_VERSION_LEN, GFP_KERNEL);  
-                 
-                if ( sys_string == NULL ) { 
-                 
+                if (sys_string == NULL) { 
                     filp_close(f, 0);
                     set_fs(oldfs);
 
                     kfree(filename);
      
                     return -1;
-     
                 }
  
                 memset(sys_string, 0, MAX_VERSION_LEN);
-                strncpy(sys_string, strsep(&p, " "), MAX_VERSION_LEN);
+
+                strncpy(sys_string, strsep(&system_map_entry_ptr, " "), MAX_VERSION_LEN);
              
                 //syscall_table = (unsigned long long *) kstrtoll(sys_string, NULL, 16);
                 syscall_table = kmalloc(sizeof(unsigned long long), GFP_KERNEL);
@@ -99,12 +114,11 @@ static int find_sys_call_table (char *kern_ver)
                 break;
             }
              
-            memset(buf, 0x0, MAX_VERSION_LEN);
+            memset(system_map_entry, 0, MAX_VERSION_LEN);
             continue;
         }
          
         i++;
-     
     }
  
     filp_close(f, 0);
