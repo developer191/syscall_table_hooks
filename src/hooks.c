@@ -64,6 +64,7 @@ char *acquire_kernel_version (void) {
   parsed_version = strsep(&full_kernel_version, " ");
 
   filp_close(proc_version, 0);
+  kfree(full_kernel_version);
   
   /*
    * Switch filesystem context back to user space mode
