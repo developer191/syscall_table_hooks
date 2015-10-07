@@ -186,7 +186,7 @@ char *acquire_kernel_version (void) {
 /*
  * TODO Find a way to resolve this address dynamically.
  *   For now, find this value using:
- *     sudo cat System.map-$(uname -r) | grep 'sys_call_table'
+ *     sudo cat /boot/System.map-$(uname -r) | grep 'sys_call_table'
  *   And hard code it here.
  */
 //unsigned long *syscall_table = (unsigned long *)0xffffffff81801400;
