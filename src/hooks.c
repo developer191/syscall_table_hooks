@@ -19,7 +19,9 @@
 
 
 
-unsigned long long *syscall_table = NULL;
+unsigned long *syscall_table = NULL;
+//unsigned long *syscall_table = (unsigned long *)0xffffffff81801400;
+asmlinkage int (*original_write)(unsigned int, const char __user *, size_t);
 
 
 
@@ -106,8 +108,8 @@ static int find_sys_call_table (char *kern_ver) {
                 strncpy(sys_string, strsep(&system_map_entry_ptr, " "), MAX_VERSION_LEN);
              
                 //syscall_table = (unsigned long long *) kstrtoll(sys_string, NULL, 16);
-                syscall_table = kmalloc(sizeof(unsigned long long), GFP_KERNEL);
-                kstrtoull(sys_string, 16, syscall_table);
+                syscall_table = kmalloc(sizeof(unsigned long *), GFP_KERNEL);
+                kstrtoul(sys_string, 16, syscall_table);
                  
                 kfree(sys_string);
                  
@@ -197,19 +199,11 @@ char *acquire_kernel_version (void) {
   return parsed_version;
 }
 
-/*
- * TODO Find a way to resolve this address dynamically.
- *   For now, find this value using:
- *     sudo cat /boot/System.map-$(uname -r) | grep 'sys_call_table'
- *   And hard code it here.
- */
-//unsigned long *syscall_table = (unsigned long *)0xffffffff81801400;
-//asmlinkage int (*original_write)(unsigned int, const char __user *, size_t);
-//asmlinkage int new_write (unsigned int x, const char __user *y, size_t size) {
-//  printk(KERN_EMERG "[+] write() hooked.");
-//
-//  return original_write(x, y, size);
-//}
+asmlinkage int new_write (unsigned int x, const char __user *y, size_t size) {
+  printk(KERN_EMERG "[+] write() hooked.");
+
+  return original_write(x, y, size);
+}
 
 static int __init onload(void) {
   printk(KERN_WARNING "Hello world!\n");
@@ -217,12 +211,16 @@ static int __init onload(void) {
 
   find_sys_call_table(acquire_kernel_version());
 
-  printk(KERN_EMERG "Syscall table address: %llx\n", *syscall_table);
+  printk(KERN_EMERG "Syscall table address: %lx\n", *syscall_table);
 
-//  write_cr0 (read_cr0 () & (~ 0x10000));
-//  original_write = (void *)syscall_table[__NR_write];
-//  syscall_table[__NR_write] = &new_write;
-//  write_cr0 (read_cr0 () | 0x10000);
+  if (syscall_table != NULL) {
+    write_cr0 (read_cr0 () & (~ 0x10000));
+    original_write = (void *)syscall_table[__NR_write];
+    syscall_table[__NR_write] = &new_write;
+    write_cr0 (read_cr0 () | 0x10000);
+  } else {
+    printk(KERN_EMERG "[-] onload: syscall_table is NULL\n");
+  }
 
   /*
    * A non 0 return means init_module failed; module can't be loaded.
@@ -231,9 +229,13 @@ static int __init onload(void) {
 }
 
 static void __exit onunload(void) {
-//  write_cr0 (read_cr0 () & (~ 0x10000));
-//  syscall_table[__NR_write] = original_write;
-//  write_cr0 (read_cr0 () | 0x10000);
+  if (syscall_table != NULL) {
+    write_cr0 (read_cr0 () & (~ 0x10000));
+    syscall_table[__NR_write] = original_write;
+    write_cr0 (read_cr0 () | 0x10000);
+  } else {
+    printk(KERN_EMERG "[-] onunload: syscall_table is NULL\n");
+  }
 
   printk(KERN_INFO "Goodbye world!\n");
 }
