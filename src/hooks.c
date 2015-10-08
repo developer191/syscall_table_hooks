@@ -4,11 +4,13 @@
 #include <linux/unistd.h>  /* sys_call_table __NR_* system call function indices */
 #include <linux/fs.h>      /* filp_open */
 #include <linux/slab.h>    /* kmalloc */
-#include <linux/preempt.h> /* preempt_enable, preempt_disable */
+//#include <linux/preempt.h> /* preempt_enable, preempt_disable */
+#include <linux/interrupt.h> /* disable_irq, enable_irq */
 
 #include <asm/paravirt.h> /* write_cr0 */
 #include <asm/uaccess.h>  /* get_fs, set_fs */
 #include <asm/syscall.h>  /* sys_call_ptr_t */
+//#include <asm/page.h>     /* virt_to_page */
 
 #include "hooks.h"
 
@@ -199,15 +201,26 @@ static int __init onload(void) {
 
   find_sys_call_table(acquire_kernel_version());
 
-  printk(KERN_EMERG "Syscall table address: %lx\n", *syscall_table);
+  printk(KERN_EMERG "Syscall table address: %p\n", *syscall_table);
+  printk(KERN_EMERG "sizeof(unsigned long *): %zx\n", sizeof(unsigned long*));
+  printk(KERN_EMERG "sizeof(sys_call_table) : %zx\n", sizeof(syscall_table));
 
   if (syscall_table != NULL) {
-    preempt_disable();
-    write_cr0 (read_cr0 () & (~ 0x10000));
-    original_write = (void *)syscall_table[__NR_write];
-    syscall_table[__NR_write] = &new_write;
-    write_cr0 (read_cr0 () | 0x10000);
-    preempt_enable();
+//    struct page *_sys_call_page;
+//    _sys_call_page = virt_to_page(&syscall_table);
+//    pages_rw(_sys_call_page, 1);
+    
+
+//    preempt_disable();
+//    local_irq_disable();
+//    barrier();
+//    write_cr0 (read_cr0 () & (~ 0x10000));
+//    original_write = (void *)syscall_table[__NR_write];
+//    syscall_table[__NR_write] = &new_write;
+//    write_cr0 (read_cr0 () | 0x10000);
+//    barrier();
+//    local_irq_enable();
+//    preempt_enable();
     printk(KERN_EMERG "[+] onload: sys_call_table hooked\n");
   } else {
     printk(KERN_EMERG "[-] onload: syscall_table is NULL\n");
@@ -221,11 +234,15 @@ static int __init onload(void) {
 
 static void __exit onunload(void) {
   if (syscall_table != NULL) {
-    preempt_disable();
-    write_cr0 (read_cr0 () & (~ 0x10000));
-    syscall_table[__NR_write] = original_write;
-    write_cr0 (read_cr0 () | 0x10000);
-    preempt_enable();
+//    preempt_disable();
+//    local_irq_disable();
+//    barrier();
+//    write_cr0 (read_cr0 () & (~ 0x10000));
+//    syscall_table[__NR_write] = original_write;
+//    write_cr0 (read_cr0 () | 0x10000);
+//    barrier();
+//    local_irq_enable();
+//    preempt_enable();
     printk(KERN_EMERG "[+] onunload: sys_call_table unhooked\n");
   } else {
     printk(KERN_EMERG "[-] onunload: syscall_table is NULL\n");
